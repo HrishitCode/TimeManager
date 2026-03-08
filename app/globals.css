@@ -1,0 +1,504 @@
+:root {
+  --bg: #f6f8ef;
+  --bg-glow: #fefce8;
+  --card: #ffffff;
+  --ink: #213547;
+  --accent: #2364aa;
+  --accent-soft: #dfeffc;
+  --danger: #bf4342;
+  --muted: #667085;
+  --floating-chip: rgba(255, 255, 255, 0.72);
+  --floating-border: rgba(100, 116, 139, 0.28);
+  --top-safe-space: 68px;
+  --surface-alt: #f8fafc;
+  --field-bg: #ffffff;
+  --field-border: #d0d5dd;
+  --btn-primary-bg: #2364aa;
+  --btn-primary-ink: #ffffff;
+  --btn-ghost-bg: #dfeffc;
+  --btn-ghost-ink: #2364aa;
+  --btn-danger-bg: #fdeceb;
+  --btn-danger-ink: #bf4342;
+  --slot-free-bg: #f8fafc;
+  --slot-booked-bg: #e8f2ff;
+  --slot-chip-bg: #2364aa;
+  --slot-chip-ink: #ffffff;
+  --overtime-bg: #fff3f2;
+  --overtime-border: #f3c4c0;
+  --overtime-text: #6c2120;
+}
+
+[data-theme="dark"] {
+  --bg: #0b1220;
+  --bg-glow: #0f1b33;
+  --card: #121c30;
+  --ink: #e8ecf4;
+  --accent: #86b7ff;
+  --accent-soft: #1b2a47;
+  --danger: #ff9d96;
+  --muted: #a9b7cf;
+  --floating-chip: rgba(11, 18, 32, 0.72);
+  --floating-border: rgba(148, 163, 184, 0.28);
+  --surface-alt: #17243c;
+  --field-bg: #0f1a2e;
+  --field-border: #2b3b59;
+  --btn-primary-bg: #9ac3ff;
+  --btn-primary-ink: #0b1220;
+  --btn-ghost-bg: #22395f;
+  --btn-ghost-ink: #dbeafe;
+  --btn-danger-bg: #4a2428;
+  --btn-danger-ink: #ffd5d1;
+  --slot-free-bg: #16233b;
+  --slot-booked-bg: #213759;
+  --slot-chip-bg: #9ac3ff;
+  --slot-chip-ink: #0b1220;
+  --overtime-bg: #2c1820;
+  --overtime-border: #6d3a45;
+  --overtime-text: #ffd4d1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Space Grotesk", "Avenir Next", sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at 0% 0%, var(--bg-glow) 0, var(--bg) 40%);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+main {
+  min-height: 100vh;
+  padding: var(--top-safe-space) 1.25rem 1.25rem;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 980px) {
+  .grid {
+    grid-template-columns: 1.3fr 1fr;
+    align-items: start;
+  }
+}
+
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 10px 30px rgba(33, 53, 71, 0.08);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-ink);
+}
+
+button.ghost {
+  background: var(--btn-ghost-bg);
+  color: var(--btn-ghost-ink);
+}
+
+button.danger {
+  background: var(--btn-danger-bg);
+  color: var(--btn-danger-ink);
+}
+
+input,
+select {
+  width: 100%;
+  border: 1px solid var(--field-border);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  background: var(--field-bg);
+  color: var(--ink);
+}
+
+input[type="date"] {
+  color-scheme: light;
+}
+
+input[type="datetime-local"] {
+  color-scheme: light;
+}
+
+input[type="time"] {
+  color-scheme: light;
+}
+
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.4);
+  opacity: 1;
+}
+
+[data-theme="dark"] input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.4);
+  opacity: 1;
+}
+
+[data-theme="dark"] input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+[data-theme="dark"] input[type="time"] {
+  color-scheme: dark;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.row.wrap {
+  flex-wrap: wrap;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.kpi {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.9rem;
+}
+
+.kpi > div {
+  padding: 0.75rem;
+  background: var(--surface-alt);
+  border-radius: 12px;
+}
+
+.floating-control {
+  position: fixed;
+  top: 12px;
+  z-index: 60;
+  background: var(--floating-chip);
+  border: 1px solid var(--floating-border);
+  border-radius: 12px;
+  padding: 0.25rem;
+  backdrop-filter: blur(8px);
+}
+
+.floating-control.left {
+  left: 12px;
+}
+
+.floating-control.right {
+  right: 12px;
+}
+
+.active-booking-banner {
+  position: relative;
+  overflow: hidden;
+}
+
+.wave-layer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    rgba(35, 100, 170, 0.08) 30%,
+    rgba(35, 100, 170, 0.18) 45%,
+    rgba(35, 100, 170, 0.08) 60%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: wave-move 2.8s linear infinite;
+  pointer-events: none;
+}
+
+[data-theme="dark"] .wave-layer {
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    rgba(134, 183, 255, 0.08) 30%,
+    rgba(134, 183, 255, 0.22) 45%,
+    rgba(134, 183, 255, 0.08) 60%,
+    transparent 100%
+  );
+}
+
+.booking-progress {
+  margin-top: 10px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.booking-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.35s ease;
+}
+
+@keyframes wave-move {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.calendar-grid {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.calendar-slot {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklab, var(--field-border) 70%, transparent);
+  background: color-mix(in oklab, var(--card) 86%, var(--surface-alt));
+  position: relative;
+  min-height: 62px;
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+}
+
+.calendar-slot > * {
+  position: relative;
+  z-index: 1;
+}
+
+.calendar-slot.free {
+  background: var(--slot-free-bg);
+}
+
+.calendar-slot.booked {
+  background: color-mix(in oklab, var(--card) 82%, var(--surface-alt));
+  border-color: color-mix(in oklab, var(--field-border) 76%, transparent);
+}
+
+.calendar-slot.past {
+  background: rgba(148, 163, 184, 0.2);
+  opacity: 0.78;
+}
+
+.calendar-time {
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.booking-chip {
+  background: var(--slot-chip-bg);
+  color: var(--slot-chip-ink);
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  display: grid;
+  gap: 6px;
+}
+
+.calendar-segment {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  border-radius: 999px;
+  background: var(--slot-booked-bg);
+  z-index: 0;
+}
+
+.calendar-track {
+  position: relative;
+  height: 36px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--slot-free-bg) 78%, var(--surface-alt));
+  border: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--field-border) 56%, transparent);
+  overflow: hidden;
+}
+
+.booking-pill {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 999px;
+  background: var(--slot-chip-bg);
+  color: var(--slot-chip-ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px;
+  min-width: 52px;
+}
+
+.booking-pill-text {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.booking-pill-remove {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.08rem 0.38rem;
+  background: transparent;
+  color: color-mix(in oklab, var(--slot-chip-ink) 82%, transparent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.booking-pill-remove:hover {
+  background: color-mix(in oklab, var(--card) 18%, transparent);
+}
+
+.calendar-now-line {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--danger);
+  border-radius: 2px;
+}
+
+.overtime-decision {
+  margin-top: 12px;
+  padding: 0.8rem;
+  border-radius: 12px;
+  background: var(--overtime-bg);
+  border: 1px solid var(--overtime-border);
+}
+
+.overtime-decision-text {
+  margin-bottom: 8px;
+  color: var(--overtime-text);
+  font-weight: 600;
+}
+
+.selection-time-block {
+  margin-top: 12px;
+  padding: 0.8rem;
+  border: 1px solid var(--field-border);
+  border-radius: 12px;
+  background: var(--surface-alt);
+  display: grid;
+  gap: 8px;
+}
+
+.selection-time-header {
+  display: grid;
+  gap: 2px;
+}
+
+.selection-time-header label {
+  font-weight: 600;
+}
+
+.selection-time-header span {
+  font-size: 12px;
+}
+
+.selection-time-input-wrap {
+  display: grid;
+}
+
+.selection-time-input {
+  height: 42px;
+  font-weight: 600;
+}
+
+.selection-time-preview {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.conflict-card {
+  border: 1px solid var(--danger);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--danger) 8%, var(--card));
+  padding: 0.8rem;
+  display: grid;
+  gap: 8px;
+}
+
+.conflict-title {
+  color: var(--danger);
+  font-size: 1rem;
+}
+
+.conflict-primary {
+  font-size: 0.96rem;
+}
+
+.conflict-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.conflict-meta > div {
+  background: var(--card);
+  border: 1px solid var(--field-border);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  display: grid;
+  gap: 2px;
+}
+
+.conflict-meta span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.conflict-meta strong {
+  font-size: 13px;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.report-table th,
+.report-table td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--field-border);
+  text-align: left;
+}
+
+.report-table th {
+  color: var(--muted);
+  font-weight: 600;
+}
