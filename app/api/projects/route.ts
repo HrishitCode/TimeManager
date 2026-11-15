@@ -1,49 +1,28 @@
-import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getAuthedUser } from "@/lib/api/auth";
-import { badRequest, serverError, unauthorized } from "@/lib/api/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/server/auth";
+import { getDb } from "@/lib/server/db";
+import { parseBody, route } from "@/lib/server/http";
+import { color, title } from "@/lib/server/schemas";
+import type { Project } from "@/lib/shared/types";
 
-const createProjectSchema = z.object({
-  name: z.string().min(1),
-  color: z.string().min(4).max(20)
+export const GET = route(async (req) => {
+  const user = await requireUser(req);
+  const db = await getDb();
+  return db.query<Project>(
+    "select id, name, color, archived_at from projects where user_id = $1 order by archived_at nulls first, created_at",
+    [user.id]
+  );
 });
 
-export async function GET(request: NextRequest) {
-  const user = await getAuthedUser(request);
-  if (!user) return unauthorized();
+const schema = z.object({ name: title, color: color.optional() });
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("user_id", user.id)
-    .is("archived_at", null)
-    .order("created_at", { ascending: false });
-
-  if (error) return serverError(error.message);
-  return NextResponse.json(data ?? []);
-}
-
-export async function POST(request: NextRequest) {
-  const user = await getAuthedUser(request);
-  if (!user) return unauthorized();
-
-  const body = await request.json();
-  const parsed = createProjectSchema.safeParse(body);
-  if (!parsed.success) return badRequest(parsed.error.message);
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("projects")
-    .insert({
-      user_id: user.id,
-      name: parsed.data.name,
-      color: parsed.data.color
-    })
-    .select("*")
-    .single();
-
-  if (error) return serverError(error.message);
-  return NextResponse.json(data, { status: 201 });
-}
+export const POST = route(async (req) => {
+  const user = await requireUser(req);
+  const body = await parseBody(req, schema);
+  const db = await getDb();
+  const [p] = await db.query<Project>(
+    "insert into projects(user_id, name, color) values ($1, $2, coalesce($3, '#3b6fd8')) returning id, name, color, archived_at",
+    [user.id, body.name, body.color ?? null]
+  );
+  return p;
+});

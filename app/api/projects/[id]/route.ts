@@ -1,38 +1,23 @@
-import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getAuthedUser } from "@/lib/api/auth";
-import { badRequest, serverError, unauthorized } from "@/lib/api/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/server/auth";
+import { getDb } from "@/lib/server/db";
+import { notFound, parseBody, route } from "@/lib/server/http";
+import { color, title } from "@/lib/server/schemas";
+import type { Project } from "@/lib/shared/types";
 
-const patchProjectSchema = z.object({
-  name: z.string().min(1).optional(),
-  color: z.string().min(4).max(20).optional(),
-  archivedAt: z.string().datetime().nullable().optional()
-});
+const schema = z.object({ name: title.optional(), color: color.optional(), archived: z.boolean().optional() });
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getAuthedUser(request);
-  if (!user) return unauthorized();
-
-  const body = await request.json();
-  const parsed = patchProjectSchema.safeParse(body);
-  if (!parsed.success) return badRequest(parsed.error.message);
-
+export const PATCH = route<{ params: Promise<{ id: string }> }>(async (req, { params }) => {
+  const user = await requireUser(req);
   const { id } = await params;
-  const patch: Record<string, string | null> = {};
-  if (parsed.data.name) patch.name = parsed.data.name;
-  if (parsed.data.color) patch.color = parsed.data.color;
-  if (parsed.data.archivedAt !== undefined) patch.archived_at = parsed.data.archivedAt;
-
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("projects")
-    .update(patch)
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .select("*")
-    .single();
-
-  if (error) return serverError(error.message);
-  return NextResponse.json(data);
-}
+  const body = await parseBody(req, schema);
+  const db = await getDb();
+  const [p] = await db.query<Project>(
+    `update projects set name = coalesce($3, name), color = coalesce($4, color),
+            archived_at = case when $5::boolean is null then archived_at when $5 then coalesce(archived_at, now()) else null end
+      where id = $1 and user_id = $2 returning id, name, color, archived_at`,
+    [id, user.id, body.name ?? null, body.color ?? null, body.archived ?? null]
+  );
+  if (!p) throw notFound();
+  return p;
+});

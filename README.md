@@ -1,91 +1,64 @@
-# Personalized Pomodoro (TypeScript + Next.js)
+# Time Manager
 
-A cross-device Pomodoro web app with manual timer controls, project playgrounds, task planning, and productivity insights.
+Plan your day, track your time honestly, and grow alongside a study partner.
 
-## Features implemented
+- **Today**: one-tap timer (focus/break, 25/50/90/open), "start the block you planned", live view of what your partner is doing, today's tasks.
+- **Plan**: day calendar with your column and your partner's column side by side. Tap a slot to plan; tap your partner's column to invite them to a joint session. A green stripe shows what was *actually* tracked next to what was *planned*. Copy a day's plan forward.
+- **Tasks / projects**: due dates, estimates, "Schedule" → drops the task onto the calendar.
+- **Reports**: daily & weekly, you vs. partner: score, focus time, plan adherence, punctuality, tasks, joint-session attendance, and plain-English verdicts on who did better at what.
+- **Together**: create a workspace, share a single-use invite link, set your time zone.
+- Works on phone and desktop (installable to home screen); state syncs through the server, so a timer started on your phone shows on your laptop within ~5s.
 
-- Email/password auth with Supabase
-- Manual timer controls: start, pause, resume, stop
-- Cross-device timer state backed by `timer_states`
-- Playgrounds as projects
-- Task management for daily/future tasks
-- Insights by day/week/month/year:
-  - completion diligence
-  - most productive hour
-  - trend chart
-
-## Setup
-
-1. Install dependencies:
+## Run locally (zero setup)
 
 ```bash
 npm install
-```
-
-2. Create `.env.local` using `.env.example`:
-
-```bash
-cp .env.example .env.local
-```
-
-3. Fill env vars from Supabase project settings.
-
-4. Run SQL migrations in Supabase SQL editor:
-
-- File: `supabase/migrations/0001_init.sql`
-- File: `supabase/migrations/0002_overtime.sql` (required if `0001` was already applied earlier)
-- File: `supabase/migrations/0003_calendar.sql` (required if `0001` was already applied earlier)
-- File: `supabase/migrations/0004_task_scheduled_datetime.sql` (required if `0001` was already applied earlier)
-- File: `supabase/migrations/0005_booking_reminders.sql` (required if `0001` was already applied earlier)
-- File: `supabase/migrations/0006_morning_digest_logs.sql` (required for morning digest idempotency)
-
-5. Start dev server:
-
-```bash
 npm run dev
 ```
 
-## API endpoints
+Open http://localhost:3000 and create an account. With no `DATABASE_URL`, the app uses **PGlite** (real Postgres compiled to WASM) stored in `./.data/pglite`, so you don't need Docker or a database install. Delete `.data/` to start fresh.
 
-- `POST /api/timer/start`
-- `POST /api/timer/pause`
-- `POST /api/timer/resume`
-- `POST /api/timer/stop`
-- `GET /api/timer/state`
-- `GET|POST /api/projects`
-- `PATCH /api/projects/:id`
-- `GET|POST /api/tasks`
-- `PATCH /api/tasks/:id`
-- `GET /api/insights?range=day|week|month|year&anchor=YYYY-MM-DD`
-- `GET /api/reports/daily?date=YYYY-MM-DD`
-- `GET|POST /api/calendar/day?date=YYYY-MM-DD`
-- `DELETE /api/calendar/day/:id`
-- `GET /api/reminders/run` (cron-triggered; requires `x-reminder-secret` header)
-- `GET /api/reminders/morning-run` (cron-triggered; supports `Authorization: Bearer <CRON_SECRET>`)
+To try the two-person flow locally, use a second browser profile (or a private window) for the second account.
 
-## Reminder emails
+## Deploy (so it works across your devices)
 
-- Configure `.env.local`:
-  - `CRON_SECRET` (recommended for Vercel cron auth)
-  - `RESEND_API_KEY`
-  - `REMINDER_FROM_EMAIL`
-  - `REMINDER_TO_EMAIL`
-  - `REMINDER_CRON_SECRET` (backward-compatible with previous header auth)
-- The repository includes `vercel.json` with:
-  - 1-minute cron for `/api/reminders/run`
-  - daily 07:00 IST digest cron (`01:30 UTC`) for `/api/reminders/morning-run`
-- The endpoint sends:
-  - 10-minute pre-start reminder
-  - 1-minute post-start reminder if timer is still not running for that booked project/task
-  - morning digest with today's schedule + yesterday summary + vs trailing average
+1. Create an **empty** Postgres database. Any of these works:
+   - Supabase: new project → *Project Settings → Database → Connection string → Transaction pooler* (port 6543)
+   - Neon: free tier → connection string
+   > The old Supabase project already has `projects`/`tasks` tables from the prototype, so use a fresh project/database instead of reusing it.
+2. On Vercel, set the env var `DATABASE_URL` to that connection string and deploy.
+3. Tables are created automatically on first request (migrations in `db/migrations/` run under an advisory lock). You can also run them yourself:
+   ```bash
+   DATABASE_URL=postgres://... npm run db:migrate
+   ```
 
-## Tests
+## Scripts
 
-```bash
-npm run test
+| | |
+|---|---|
+| `npm run dev` | dev server |
+| `npm test` | unit + integration tests (in-memory Postgres) |
+| `npm run typecheck` / `npm run lint` | static checks |
+| `npm run build` | production build |
+| `npm run db:migrate` | apply SQL migrations to `DATABASE_URL` (or local PGlite) |
+
+## Project layout
+
+```
+db/migrations/        SQL schema, applied in filename order
+lib/shared/           pure TS used by server and browser
+  time.ts             time zones + interval math (no deps)
+  report.ts           the report engine: planned vs. tracked → metrics, score, verdicts
+  types.ts            API DTOs
+lib/server/
+  db.ts               driver abstraction (pg | PGlite), migrations, type parsing
+  auth.ts             scrypt passwords, hashed session tokens, cookie/Bearer auth
+  http.ts             route() wrapper: errors → JSON
+  services/           business logic (workspace, blocks, timer, reports): no HTTP in here
+app/api/**/route.ts   thin HTTP layer: validate (zod) → call service → JSON
+app/(app)/            signed-in pages (Today, Plan, Tasks, Reports, Together)
+components/, lib/client/   UI + a tiny fetch/poll hook
+tests/                vitest; services are tested against a real in-memory Postgres
 ```
 
-## Notes
-
-- Timer consistency uses optimistic concurrency via `state_version`.
-- For production, rotate service role key and keep it server-only.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design decisions, known limitations, and the rebuild roadmap.

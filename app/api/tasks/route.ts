@@ -1,66 +1,44 @@
-import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getAuthedUser } from "@/lib/api/auth";
-import { badRequest, serverError, unauthorized } from "@/lib/api/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/server/auth";
+import { getDb } from "@/lib/server/db";
+import { badRequest, parseBody, route } from "@/lib/server/http";
+import { isoDate, optUuid, title } from "@/lib/server/schemas";
+import type { Task } from "@/lib/shared/types";
 
-const nullableDate = z.preprocess((value) => {
-  if (value === "" || value === undefined || value === null) return null;
-  if (typeof value !== "string") return value;
-  const asDate = new Date(value);
-  if (Number.isNaN(asDate.getTime())) return value;
-  return asDate.toISOString();
-}, z.string().datetime().nullable());
+const TASK_COLUMNS = "id, project_id, title, notes, status, due_date, estimate_min, completed_at, created_at";
 
-const createTaskSchema = z.object({
-  projectId: z.string().uuid(),
-  title: z.string().min(1),
-  description: z.string().nullable().optional(),
-  kind: z.enum(["daily", "future"]),
-  scheduledFor: nullableDate.optional(),
-  priority: z.number().int().min(1).max(5).nullable().optional()
+export const GET = route(async (req) => {
+  const user = await requireUser(req);
+  const db = await getDb();
+  // Open tasks + anything finished in the last 14 days.
+  return db.query<Task>(
+    `select ${TASK_COLUMNS} from tasks
+      where user_id = $1 and (status = 'todo' or completed_at > now() - interval '14 days')
+      order by status desc, due_date nulls last, created_at`,
+    [user.id]
+  );
 });
 
-export async function GET(request: NextRequest) {
-  const user = await getAuthedUser(request);
-  if (!user) return unauthorized();
+const schema = z.object({
+  title,
+  project_id: optUuid,
+  notes: z.string().max(2000).nullable().optional(),
+  due_date: isoDate.nullable().optional(),
+  estimate_min: z.number().int().positive().max(24 * 60).nullable().optional()
+});
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  if (error) return serverError(error.message);
-  return NextResponse.json(data ?? []);
-}
-
-export async function POST(request: NextRequest) {
-  const user = await getAuthedUser(request);
-  if (!user) return unauthorized();
-
-  const body = await request.json();
-  const parsed = createTaskSchema.safeParse(body);
-  if (!parsed.success) return badRequest(parsed.error.message);
-
-  const supabase = createSupabaseAdminClient();
-  const today = new Date().toISOString().slice(0, 10);
-  const { data, error } = await supabase
-    .from("tasks")
-    .insert({
-      user_id: user.id,
-      project_id: parsed.data.projectId,
-      title: parsed.data.title,
-      description: parsed.data.description ?? null,
-      kind: parsed.data.kind,
-      scheduled_for: parsed.data.scheduledFor ?? null,
-      priority: parsed.data.priority ?? null,
-      recurrence_date: parsed.data.kind === "daily" ? today : null
-    })
-    .select("*")
-    .single();
-
-  if (error) return serverError(error.message);
-  return NextResponse.json(data, { status: 201 });
-}
+export const POST = route(async (req) => {
+  const user = await requireUser(req);
+  const body = await parseBody(req, schema);
+  const db = await getDb();
+  if (body.project_id) {
+    const ok = await db.query("select 1 from projects where id = $1 and user_id = $2", [body.project_id, user.id]);
+    if (!ok.length) throw badRequest("Unknown project");
+  }
+  const [t] = await db.query<Task>(
+    `insert into tasks(user_id, project_id, title, notes, due_date, estimate_min)
+     values ($1, $2, $3, $4, $5, $6) returning ${TASK_COLUMNS}`,
+    [user.id, body.project_id ?? null, body.title, body.notes ?? null, body.due_date ?? null, body.estimate_min ?? null]
+  );
+  return t;
+});
