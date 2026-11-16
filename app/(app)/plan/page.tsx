@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import BlockEditor, { BlockDraft } from "@/components/BlockEditor";
 import { Person, useMe, usePeople } from "@/components/MeContext";
-import { Avatar, useToast } from "@/components/ui";
+import { Avatar, Modal, useToast } from "@/components/ui";
 import { api, errMsg, useApi, useNow } from "@/lib/client/api";
 import { useCatalog } from "@/lib/client/catalog";
-import { addDays, fmtDuration, fmtTime, localDate } from "@/lib/shared/time";
-import type { Block, MemberStatus, TimeEntry } from "@/lib/shared/types";
+import { addDays, clip, fmtDuration, fmtTime, intersect, localDate, subtract, toInterval, totalMs } from "@/lib/shared/time";
+import type { Block, MemberStatus, Project, TimeEntry } from "@/lib/shared/types";
 
 const PX = 1; // pixels per minute → 1440px per day
 const GUTTER = 48;
@@ -24,6 +24,7 @@ export default function PlanPage() {
   const [date, setDate] = useState(() => localDate());
   const [draft, setDraft] = useState<BlockDraft | null>(null);
   const [open, setOpen] = useState<Block | null>(null);
+  const [entryOpen, setEntryOpen] = useState<TimeEntry | null>(null);
 
   // URL ↔ state (?date=YYYY-MM-DD&task=<id>)
   const [taskParam, setTaskParam] = useState<string | null>(null);
@@ -111,9 +112,10 @@ export default function PlanPage() {
     running: status.data?.find((s) => s.user_id === p.id)?.timer ?? null
   }));
 
-  const myPlanned = columns[0]?.blocks
-    .filter((b) => b.participants.some((x) => x.user_id === me.user.id && x.status === "accepted"))
-    .reduce((s, b) => s + (Math.min(dayEnd, new Date(b.ends_at).getTime()) - Math.max(dayStart, new Date(b.starts_at).getTime())) / 60_000, 0);
+  const myAccepted = (columns[0]?.blocks ?? []).filter((b) => b.participants.some((x) => x.user_id === me.user.id && x.status === "accepted"));
+  const minutesInDay = (b: Block) => (Math.min(dayEnd, new Date(b.ends_at).getTime()) - Math.max(dayStart, new Date(b.starts_at).getTime())) / 60_000;
+  const myPlanned = myAccepted.filter((b) => b.include_in_reports).reduce((s, b) => s + minutesInDay(b), 0);
+  const myExcluded = myAccepted.filter((b) => !b.include_in_reports).reduce((s, b) => s + minutesInDay(b), 0);
 
   const isToday = date === localDate(new Date(now));
   const nowMin = (now - dayStart) / 60_000;
@@ -133,7 +135,8 @@ export default function PlanPage() {
         <div>
           <h1>{label}</h1>
           <p className="muted small num">
-            {myPlanned ? `${fmtDuration(myPlanned)} planned for you` : "Tap an empty slot to plan a block"}
+            {myPlanned || myExcluded ? `${fmtDuration(myPlanned)} planned for you` : "Tap an empty slot to plan a block"}
+            {myExcluded ? ` · ${fmtDuration(myExcluded)} not counted` : ""}
             {people.length > 1 ? " · tap a partner's column to invite them" : ""}
           </p>
         </div>
@@ -179,8 +182,11 @@ export default function PlanPage() {
         <div className="cal-scroll" ref={scroller}>
         <div className="cal-head" style={{ gridTemplateColumns: grid }}>
           <div />
-          {columns.map(({ person, entries: es }) => {
-            const focus = es.filter((x) => x.mode === "focus").reduce((s, x) => s + (new Date(x.ended_at).getTime() - new Date(x.started_at).getTime()) / 60_000, 0);
+          {columns.map(({ person, entries: es, blocks: bs }) => {
+            // Same rule as reports: drop opted-out entries and anything inside an opted-out block.
+            const excludedWindows = bs.filter((b) => !b.include_in_reports).map((b) => toInterval(b.starts_at, b.ends_at));
+            const counted = es.filter((x) => x.mode === "focus" && x.include_in_reports).map((x) => toInterval(x.started_at, x.ended_at));
+            const focus = totalMs(subtract(counted, excludedWindows)) / 60_000;
             return (
               <div key={person.id}>
                 <Avatar name={person.name} color={person.color} small />
@@ -198,16 +204,29 @@ export default function PlanPage() {
                 </div>
               ))}
             </div>
-            {columns.map(({ person, blocks: bs, entries: es, running }) => (
+            {columns.map(({ person, blocks: bs, entries: es, running }) => {
+              const excludedWindows = bs.filter((b) => !b.include_in_reports).map((b) => toInterval(b.starts_at, b.ends_at));
+              return (
               <div key={person.id} className="cal-col" onClick={(e) => clickColumn(person, e)}>
                 {Array.from({ length: 48 }, (_, i) => (
                   <div key={i} className={`cal-line ${i % 2 ? "half" : ""}`} style={{ top: i * 30 * PX }} />
                 ))}
                 {isToday ? <div className="cal-now" style={{ top: nowMin * PX }} /> : null}
-                {es.map((x) => {
-                  const s = Math.max(dayStart, new Date(x.started_at).getTime());
-                  const e = Math.min(dayEnd, new Date(x.ended_at).getTime());
-                  return <div key={x.id} className={`cal-actual ${x.mode === "break" ? "brk" : ""}`} style={{ top: ((s - dayStart) / 60_000) * PX, height: Math.max(2, ((e - s) / 60_000) * PX) }} title={`${x.label ?? "Tracked"} ${fmtTime(x.started_at)}–${fmtTime(x.ended_at)}`} />;
+                {es.flatMap((x) => {
+                  const iv = clip([toInterval(x.started_at, x.ended_at)], { start: dayStart, end: dayEnd });
+                  // Grey where it won't count: the entry is opted out, or it falls inside an opted-out block.
+                  const pieces = x.include_in_reports
+                    ? [...subtract(iv, excludedWindows).map((p) => ({ ...p, counted: true })), ...intersect(iv, excludedWindows).map((p) => ({ ...p, counted: false }))]
+                    : iv.map((p) => ({ ...p, counted: false }));
+                  return pieces.map((p) => (
+                    <div
+                      key={`${x.id}-${p.start}`}
+                      className={`cal-actual ${x.mode === "break" ? "brk" : ""} ${p.counted ? "" : "excluded"} ${person.isMe ? "clickable" : ""}`}
+                      style={{ top: ((p.start - dayStart) / 60_000) * PX, height: Math.max(2, ((p.end - p.start) / 60_000) * PX) }}
+                      title={`${x.label ?? "Tracked"} ${fmtTime(x.started_at)}–${fmtTime(x.ended_at)}${p.counted ? "" : " (not counted in reports)"}`}
+                      onClick={person.isMe ? () => setEntryOpen(x) : undefined}
+                    />
+                  ));
                 })}
                 {running?.status === "running" && running.segment_started_at && isToday ? (
                   <div
@@ -227,14 +246,19 @@ export default function PlanPage() {
                   return (
                     <div
                       key={b.id}
-                      className={`cal-block ${mineStatus === "invited" ? "invited" : ""}`}
-                      style={{ top: ((s - dayStart) / 60_000) * PX, height: Math.max(18, h - 2), ["--c" as string]: b.project_color ?? person.color }}
+                      className={`cal-block ${mineStatus === "invited" ? "invited" : ""} ${b.include_in_reports ? "" : "excluded"}`}
+                      style={{
+                        top: ((s - dayStart) / 60_000) * PX,
+                        height: Math.max(18, h - 2),
+                        ["--c" as string]: b.include_in_reports ? (b.project_color ?? person.color) : "var(--muted)"
+                      }}
                       onClick={() => setOpen(b)}
                       title={`${b.title} · ${fmtTime(b.starts_at)}–${fmtTime(b.ends_at)}`}
                     >
                       <div className="t ellipsis">
                         {mineStatus === "invited" ? "✉ " : ""}
                         {b.title}
+                        {!b.include_in_reports ? <span className="tiny muted" style={{ fontWeight: 500 }}> · not counted</span> : null}
                       </div>
                       {h >= 34 ? (
                         <div className="tiny muted ellipsis num">
@@ -246,13 +270,83 @@ export default function PlanPage() {
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
 
       {draft ? <BlockEditor draft={draft} projects={catalog.projects} tasks={catalog.tasks} onClose={() => setDraft(null)} onSaved={reloadAll} /> : null}
       {open ? <BlockEditor block={open} projects={catalog.projects} tasks={catalog.tasks} onClose={() => setOpen(null)} onSaved={reloadAll} /> : null}
+      {entryOpen ? <EntryEditor entry={entryOpen} projects={catalog.projects} onClose={() => setEntryOpen(null)} onSaved={() => void loadEntries()} /> : null}
     </main>
+  );
+}
+
+/** Tap a tracked stripe in your own column: opt it in/out of reports, or delete it. */
+function EntryEditor({ entry, projects, onClose, onSaved }: { entry: TimeEntry; projects: Project[]; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const project = projects.find((p) => p.id === entry.project_id);
+  const minutes = (new Date(entry.ended_at).getTime() - new Date(entry.started_at).getTime()) / 60_000;
+
+  const run = async (fn: () => Promise<unknown>, text: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      toast({ text });
+      onSaved();
+      onClose();
+    } catch (e) {
+      toast({ text: errMsg(e), kind: "bad" });
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Tracked time" onClose={onClose}>
+      <div className="stack">
+        <div>
+          <h2>{entry.label || project?.name || (entry.mode === "break" ? "Break" : "Focus")}</h2>
+          <p className="muted small num">
+            {fmtTime(entry.started_at)}–{fmtTime(entry.ended_at)} · {fmtDuration(minutes)} · {entry.mode}
+            {entry.source === "manual" ? " · logged manually" : ""}
+            {project ? ` · ${project.name}` : ""}
+          </p>
+        </div>
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={entry.include_in_reports}
+            disabled={busy}
+            onChange={(e) =>
+              void run(
+                () => api(`/api/entries/${entry.id}`, { method: "PATCH", body: { include_in_reports: e.target.checked } }),
+                e.target.checked ? "Counts in reports again" : "Left out of reports"
+              )
+            }
+          />
+          Count this time in reports
+        </label>
+        {confirmDelete ? (
+          <div className="callout bad stack">
+            <span className="small">Delete this {fmtDuration(minutes)} entry permanently? This can&apos;t be undone.</span>
+            <div className="row">
+              <button className="danger sm" disabled={busy} onClick={() => void run(() => api(`/api/entries/${entry.id}`, { method: "DELETE" }), "Entry deleted")}>
+                Yes, delete
+              </button>
+              <button className="ghost sm" onClick={() => setConfirmDelete(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button className="danger sm" style={{ alignSelf: "flex-start" }} onClick={() => setConfirmDelete(true)}>
+            Delete entry
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 }

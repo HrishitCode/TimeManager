@@ -108,10 +108,29 @@ const createPgDb = async (url: string): Promise<Db> => {
   };
 };
 
+/**
+ * PGlite 0.2 ignores custom `parsers` and returns Date / bigint objects, so normalise its rows
+ * by column type afterwards to match node-postgres output exactly (ISO strings, YYYY-MM-DD, numbers).
+ */
+const normalisePglite = (res: { rows: Record<string, unknown>[]; fields: { name: string; dataTypeID: number }[] }) => {
+  const fix = res.fields.filter((f) => f.dataTypeID in parsers);
+  if (!fix.length) return res.rows;
+  for (const row of res.rows) {
+    for (const f of fix) {
+      const v = row[f.name];
+      if (v === null || v === undefined) continue;
+      if (v instanceof Date) row[f.name] = f.dataTypeID === OID.DATE ? v.toISOString().slice(0, 10) : v.toISOString();
+      else if (typeof v === "bigint") row[f.name] = Number(v);
+      else if (typeof v === "string") row[f.name] = parsers[f.dataTypeID](v);
+    }
+  }
+  return res.rows;
+};
+
 export const createPgliteDb = async (dataDir?: string): Promise<Db> => {
   const { PGlite } = await import("@electric-sql/pglite");
   if (dataDir) fs.mkdirSync(dataDir, { recursive: true });
-  const lite = new PGlite(dataDir, { parsers });
+  const lite = new PGlite(dataDir);
   await lite.waitReady;
   // PGlite is single-connection: serialise transactions so they never interleave.
   let chain: Promise<unknown> = Promise.resolve();
@@ -127,7 +146,7 @@ export const createPgliteDb = async (dataDir?: string): Promise<Db> => {
           await lite.exec(sql);
           return [];
         }
-        return (await lite.query(sql, params as unknown[])).rows as never;
+        return normalisePglite(await lite.query(sql, params as unknown[])) as never;
       }),
     tx: (fn) =>
       serial(() =>
@@ -138,7 +157,7 @@ export const createPgliteDb = async (dataDir?: string): Promise<Db> => {
                 await t.exec(sql);
                 return [];
               }
-              return (await t.query(sql, params as unknown[])).rows as never;
+              return normalisePglite(await t.query(sql, params as unknown[])) as never;
             }
           })
         )

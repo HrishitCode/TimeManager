@@ -24,7 +24,8 @@ const schema = z.object({
   project_id: optUuid,
   task_id: optUuid,
   label: z.string().trim().max(200).nullable().optional(),
-  mode: z.enum(["focus", "break"]).optional()
+  mode: z.enum(["focus", "break"]).optional(),
+  include_in_reports: z.boolean().optional()
 });
 
 export const POST = route(async (req) => {

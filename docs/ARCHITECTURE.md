@@ -19,6 +19,7 @@ Every metric is interval math over these two sets (`lib/shared/report.ts`):
 - **focus** = union of focus entries
 - **on-plan** = planned ∩ focus → **adherence** = on-plan ÷ planned
 - **lateness** = first focus inside a block − block start
+- **opt-outs**: any block, tracked entry or running timer can be marked "don't count in reports" (`include_in_reports`). An excluded *block* removes its whole window from both sets (office hours: neither planned nor focus), and an excluded *entry* is just dropped. Reports show the excluded total so it stays transparent to your partner.
 - **score** = 50% adherence + 20% on-time starts + 30% task follow-through (deliberately simple, so you can argue with it)
 
 Why the prototype's model broke: it stored one `sessions` row and *overwrote* `started_at` on resume, so paused-then-resumed time vanished from history. Now pause/stop close a segment into `time_entries`; history is never rewritten.

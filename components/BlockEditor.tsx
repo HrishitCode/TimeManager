@@ -52,6 +52,7 @@ export default function BlockEditor({ draft, block, projects, tasks, onClose, on
   const [taskId, setTaskId] = useState(block?.task_id ?? draft?.task_id ?? "");
   const already = new Set(block?.participants.filter((p) => p.status !== "declined").map((p) => p.user_id) ?? []);
   const [invite, setInvite] = useState<string[]>(draft?.invite ?? []);
+  const [include, setInclude] = useState(block?.include_in_reports ?? true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -81,7 +82,8 @@ export default function BlockEditor({ draft, block, projects, tasks, onClose, on
       starts_at: startsAt,
       ends_at: endsAt,
       project_id: projectId || null,
-      task_id: taskId || null
+      task_id: taskId || null,
+      include_in_reports: include
     };
     if (!block) {
       return run(() => api("/api/blocks", { body: { ...payload, invite_user_ids: invite } }), invite.length ? "Planned & invitation sent" : "Planned");
@@ -106,6 +108,7 @@ export default function BlockEditor({ draft, block, projects, tasks, onClose, on
             </p>
             <p className="small" style={{ marginTop: 6 }}>
               Organised by <strong>{block.owner_name}</strong>
+              {!block.include_in_reports ? <span className="chip" style={{ marginLeft: 8 }}>not counted in reports</span> : null}
             </p>
           </div>
           <Participants block={block} />
@@ -170,6 +173,17 @@ export default function BlockEditor({ draft, block, projects, tasks, onClose, on
                 ))}
               </select>
             </div>
+          </div>
+          <div>
+            <label className="inline">
+              <input type="checkbox" checked={include} onChange={(e) => setInclude(e.target.checked)} />
+              Count this time in reports
+            </label>
+            {!include ? (
+              <p className="tiny muted" style={{ marginTop: 4, marginLeft: 24 }}>
+                Left out entirely: this window won&apos;t count as planned, and anything you track during it won&apos;t count as focus. Good for office hours, commute, sleep.
+              </p>
+            ) : null}
           </div>
           {mates.length ? (
             <div>

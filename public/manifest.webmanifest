@@ -1,9 +1,22 @@
 {
+  "id": "/",
   "name": "Time Manager",
   "short_name": "Time",
+  "description": "Plan your day, track your time honestly, and grow alongside your study partner.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f5f5f2",
-  "theme_color": "#3b5bdb",
-  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "orientation": "portrait",
+  "background_color": "#111215",
+  "theme_color": "#111215",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Plan", "url": "/plan", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Reports", "url": "/reports", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
 }

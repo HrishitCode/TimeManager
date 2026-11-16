@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MeContext, useMe } from "@/components/MeContext";
 import { Spinner, ThemeToggle, ToastProvider, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/client/api";
+import { notify } from "@/lib/client/notify";
 import { fmtTime } from "@/lib/shared/time";
 import type { Block, Me, Timer } from "@/lib/shared/types";
 
@@ -121,9 +122,7 @@ function useBlockReminders(blocks: Block[] | undefined, myId: string | undefined
             }
           }
         });
-        if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.visibilityState !== "visible") {
-          new Notification("Time to start", { body: text, tag: b.id });
-        }
+        if (document.visibilityState !== "visible") void notify("Time to start", text, { tag: b.id, url: "/" });
       }
     };
     void check();

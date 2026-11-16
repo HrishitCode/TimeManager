@@ -169,6 +169,7 @@ code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; background: v
 .callout.warn { background: var(--warn-soft); }
 .callout.bad { background: var(--bad-soft); }
 .callout.good { background: var(--good-soft); }
+.callout.bad, .callout.warn, .callout.good { color: var(--ink); }
 
 /* ───────────── controls ───────────── */
 button {
@@ -291,6 +292,11 @@ input[type="color"] { padding: 2px; height: 40px; width: 52px; }
 .cal-actual { position: absolute; left: 3px; width: 5px; border-radius: 3px; background: var(--good); z-index: 1; pointer-events: none; }
 .cal-actual.brk { background: var(--muted); opacity: 0.5; }
 .cal-actual.running { background: var(--warn); }
+.cal-actual.excluded { background: var(--muted); opacity: 0.45; }
+.cal-actual.clickable { pointer-events: auto; cursor: pointer; }
+.cal-actual.clickable::after { content: ""; position: absolute; inset: 0 -3px 0 -3px; }
+.cal-actual.clickable:hover { filter: brightness(1.2); }
+.cal-block.excluded { background: repeating-linear-gradient(135deg, var(--surface-2) 0 5px, var(--surface) 5px 10px); color: var(--ink-2); }
 .cal-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.76rem; color: var(--muted); margin-top: 8px; }
 .cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }

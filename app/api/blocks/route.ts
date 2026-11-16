@@ -22,6 +22,7 @@ const schema = z.object({
   ends_at: isoInstant,
   project_id: optUuid,
   task_id: optUuid,
+  include_in_reports: z.boolean().optional(),
   invite_user_ids: z.array(uuid).max(8).optional()
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dateInTz, dayRange, intersect, mergeIntervals, tzOffsetMinutes, weekStart, zonedMidnight } from "@/lib/shared/time";
+import { addDays, dateInTz, dayRange, intersect, mergeIntervals, subtract, tzOffsetMinutes, weekStart, zonedMidnight } from "@/lib/shared/time";
 import { pgTimestampToIso } from "@/lib/server/db";
 
 describe("time zones", () => {
@@ -38,6 +38,36 @@ describe("intervals", () => {
       { start: 5, end: 10 },
       { start: 20, end: 25 }
     ]);
+  });
+});
+
+describe("subtract", () => {
+  it("cuts holes out of interval sets", () => {
+    expect(subtract([{ start: 0, end: 100 }], [{ start: 10, end: 20 }, { start: 50, end: 60 }])).toEqual([
+      { start: 0, end: 10 },
+      { start: 20, end: 50 },
+      { start: 60, end: 100 }
+    ]);
+    expect(subtract([{ start: 0, end: 10 }], [{ start: -5, end: 15 }])).toEqual([]);
+    expect(subtract([{ start: 0, end: 10 }, { start: 20, end: 30 }], [{ start: 5, end: 25 }])).toEqual([
+      { start: 0, end: 5 },
+      { start: 25, end: 30 }
+    ]);
+    expect(subtract([{ start: 0, end: 10 }], [])).toEqual([{ start: 0, end: 10 }]);
+  });
+});
+
+describe("PGlite rows match node-postgres", () => {
+  it("returns ISO strings, plain dates and numbers", async () => {
+    const { createPgliteDb } = await import("@/lib/server/db");
+    const db = await createPgliteDb();
+    const [row] = await db.query<Record<string, unknown>>(
+      "select '2026-11-15 10:00:00+05:30'::timestamptz as ts, '2026-11-15'::date as d, count(*) as n, null::timestamptz as z from (values (1),(2)) v"
+    );
+    expect(row).toEqual({ ts: "2026-11-15T04:30:00.000Z", d: "2026-11-15", n: 2, z: null });
+    const [inTx] = await db.tx((q) => q.query<{ ts: unknown }>("select now() as ts"));
+    expect(typeof inTx.ts).toBe("string");
+    await db.close();
   });
 });
 

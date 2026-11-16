@@ -8,7 +8,7 @@ const MAX_BLOCK_HOURS = 16;
 const BLOCK_SELECT = `
   select b.id, b.owner_id, ou.name as owner_name, b.workspace_id, b.title,
          b.project_id, p.name as project_name, p.color as project_color, b.task_id,
-         b.starts_at, b.ends_at,
+         b.starts_at, b.ends_at, b.include_in_reports,
          coalesce((
            select json_agg(json_build_object('user_id', bp.user_id, 'name', pu.name, 'status', bp.status)
                            order by (bp.user_id = b.owner_id) desc, pu.name)
@@ -86,6 +86,7 @@ export interface BlockInput {
   ends_at: string;
   project_id?: string | null;
   task_id?: string | null;
+  include_in_reports?: boolean;
   invite_user_ids?: string[];
 }
 
@@ -107,9 +108,9 @@ export const createBlock = async (userId: string, input: BlockInput) => {
     }
 
     const [row] = await q.query<{ id: string }>(
-      `insert into plan_blocks(owner_id, workspace_id, title, project_id, task_id, starts_at, ends_at)
-       values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-      [userId, workspaceId, input.title, input.project_id ?? null, input.task_id ?? null, input.starts_at, input.ends_at]
+      `insert into plan_blocks(owner_id, workspace_id, title, project_id, task_id, starts_at, ends_at, include_in_reports)
+       values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+      [userId, workspaceId, input.title, input.project_id ?? null, input.task_id ?? null, input.starts_at, input.ends_at, input.include_in_reports ?? true]
     );
     await q.query("insert into block_participants(block_id, user_id, status, responded_at) values ($1, $2, 'accepted', now())", [
       row.id,
@@ -141,8 +142,8 @@ export const updateBlock = async (userId: string, id: string, patch: Partial<Omi
       }
     }
     await q.query(
-      `update plan_blocks set title = $2, project_id = $3, task_id = $4, starts_at = $5, ends_at = $6 where id = $1`,
-      [id, next.title, next.project_id, next.task_id, next.starts_at, next.ends_at]
+      `update plan_blocks set title = $2, project_id = $3, task_id = $4, starts_at = $5, ends_at = $6, include_in_reports = $7 where id = $1`,
+      [id, next.title, next.project_id, next.task_id, next.starts_at, next.ends_at, next.include_in_reports]
     );
   });
   return getBlock(id);
@@ -211,8 +212,8 @@ export const inviteToBlock = async (userId: string, id: string, inviteeIds: stri
 export const copyDay = async (userId: string, fromStartIso: string, fromEndIso: string, shiftMs: number) => {
   const db = await getDb();
   return db.tx(async (q) => {
-    const source = await q.query<{ title: string; project_id: string | null; task_id: string | null; starts_at: string; ends_at: string }>(
-      `select title, project_id, task_id, starts_at, ends_at from plan_blocks
+    const source = await q.query<{ title: string; project_id: string | null; task_id: string | null; starts_at: string; ends_at: string; include_in_reports: boolean }>(
+      `select title, project_id, task_id, starts_at, ends_at, include_in_reports from plan_blocks
         where owner_id = $1 and starts_at >= $2 and starts_at < $3 order by starts_at`,
       [userId, fromStartIso, fromEndIso]
     );
@@ -226,8 +227,8 @@ export const copyDay = async (userId: string, fromStartIso: string, fromEndIso: 
         continue;
       }
       const [row] = await q.query<{ id: string }>(
-        `insert into plan_blocks(owner_id, title, project_id, task_id, starts_at, ends_at) values ($1, $2, $3, $4, $5, $6) returning id`,
-        [userId, b.title, b.project_id, b.task_id, s, e]
+        `insert into plan_blocks(owner_id, title, project_id, task_id, starts_at, ends_at, include_in_reports) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+        [userId, b.title, b.project_id, b.task_id, s, e, b.include_in_reports]
       );
       await q.query("insert into block_participants(block_id, user_id, status, responded_at) values ($1, $2, 'accepted', now())", [
         row.id,

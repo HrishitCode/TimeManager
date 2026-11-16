@@ -147,4 +147,22 @@ export const intersect = (a: Interval[], b: Interval[]): Interval[] => {
   return out;
 };
 
+/** `a` minus `b`: the parts of `a` not covered by any interval in `b`. */
+export const subtract = (a: Interval[], b: Interval[]): Interval[] => {
+  const B = mergeIntervals(b);
+  const out: Interval[] = [];
+  for (const iv of mergeIntervals(a)) {
+    let cur = iv.start;
+    for (const cut of B) {
+      if (cut.end <= cur) continue;
+      if (cut.start >= iv.end) break;
+      if (cut.start > cur) out.push({ start: cur, end: cut.start });
+      cur = Math.max(cur, cut.end);
+      if (cur >= iv.end) break;
+    }
+    if (cur < iv.end) out.push({ start: cur, end: iv.end });
+  }
+  return out;
+};
+
 export const msToMin = (ms: number) => ms / MIN;

@@ -15,13 +15,13 @@ const peopleFor = async (user: User): Promise<Person[]> => {
 const loadEntries = async (userId: string, fromIso: string, toIso: string, nowIso: string): Promise<ReportEntry[]> => {
   const db = await getDb();
   const entries = await db.query<ReportEntry>(
-    `select project_id, mode, started_at, ended_at from time_entries
+    `select project_id, mode, started_at, ended_at, include_in_reports as include from time_entries
       where user_id = $1 and started_at < $3 and ended_at > $2`,
     [userId, fromIso, toIso]
   );
   const [t] = await db.query<Timer>("select * from timers where user_id = $1 and status = 'running'", [userId]);
   if (t?.segment_started_at && t.segment_started_at < nowIso) {
-    entries.push({ project_id: t.project_id, mode: t.mode, started_at: t.segment_started_at, ended_at: nowIso });
+    entries.push({ project_id: t.project_id, mode: t.mode, started_at: t.segment_started_at, ended_at: nowIso, include: t.include_in_reports });
   }
   return entries;
 };
@@ -33,7 +33,7 @@ const loadMemberInput = async (p: Person, dates: string[], nowIso: string): Prom
 
   const [blocks, entries, tasksDone, tasksDue, projects] = await Promise.all([
     db.query<ReportBlock>(
-      `select b.id, b.title, b.starts_at, b.ends_at,
+      `select b.id, b.title, b.starts_at, b.ends_at, b.include_in_reports as include,
               array(select x.user_id::text from block_participants x where x.block_id = b.id and x.status = 'accepted') as participant_ids
          from plan_blocks b join block_participants bp on bp.block_id = b.id
         where bp.user_id = $1 and bp.status = 'accepted' and b.starts_at < $3 and b.ends_at > $2`,
@@ -100,10 +100,9 @@ export const memberStatuses = async (viewer: User): Promise<MemberStatus[]> => {
           where bp.user_id = $1 and bp.status = 'accepted' and b.starts_at <= $2 and b.ends_at > $2 limit 1`,
         [p.id, nowIso]
       );
+      // Same rules as the report (opted-out time doesn't count as "focused today").
       const today = dateInTz(now, p.timezone);
-      const r = dayRange(today, p.timezone);
-      const entries = await loadEntries(p.id, new Date(r.startMs).toISOString(), new Date(r.endMs).toISOString(), nowIso);
-      const report = computeMemberReport({ user: p, blocks: [], entries, tasks_done: 0, tasks_due: 0, projects: [] }, [today], now);
+      const report = computeMemberReport(await loadMemberInput(p, [today], nowIso), [today], now);
       return {
         user_id: p.id,
         name: p.name,

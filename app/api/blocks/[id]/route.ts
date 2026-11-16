@@ -11,7 +11,8 @@ const schema = z.object({
   starts_at: isoInstant.optional(),
   ends_at: isoInstant.optional(),
   project_id: optUuid,
-  task_id: optUuid
+  task_id: optUuid,
+  include_in_reports: z.boolean().optional()
 });
 
 export const PATCH = route<P>(async (req, { params }) => {

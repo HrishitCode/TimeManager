@@ -4,7 +4,7 @@ import type { Db } from "@/lib/server/db";
 import { freshDb, ist, makeUser } from "./helpers";
 import { createInvite, createWorkspace, getWorkspaceFor, joinByCode, leaveWorkspace } from "@/lib/server/services/workspace";
 import { createBlock, listBlocks, respondToBlock, updateBlock, copyDay } from "@/lib/server/services/blocks";
-import { getTimer, pauseTimer, resumeTimer, startTimer, stopTimer, listEntries } from "@/lib/server/services/timer";
+import { getTimer, pauseTimer, resumeTimer, setEntryInclude, setTimerInclude, startTimer, stopTimer, listEntries } from "@/lib/server/services/timer";
 import { buildReport, memberStatuses } from "@/lib/server/services/reports";
 import { POST as signup } from "@/app/api/auth/signup/route";
 import { POST as login } from "@/app/api/auth/login/route";
@@ -145,6 +145,53 @@ describe("reports", () => {
     await startTimer(b.id, { label: "Leetcode" });
     const statuses = await memberStatuses(a);
     expect(statuses.find((s) => s.user_id === b.id)?.timer?.label).toBe("Leetcode");
+  });
+});
+
+describe("report opt-out (services)", () => {
+  it("excluded blocks and timers flow through to the report", async () => {
+    const a = await makeUser(db, "Asha");
+    const office = await createBlock(a.id, { title: "Office", starts_at: ist(D, "09:00"), ends_at: ist(D, "18:00"), include_in_reports: false });
+    expect(office?.include_in_reports).toBe(false);
+    await createBlock(a.id, { title: "DSA", starts_at: ist(D, "19:00"), ends_at: ist(D, "20:00") });
+    await db.query(
+      "insert into time_entries(user_id, started_at, ended_at) values ($1, $2, $3), ($1, $4, $5)",
+      [a.id, ist(D, "10:00"), ist(D, "17:00"), ist(D, "19:00"), ist(D, "19:45")]
+    );
+    const [me] = (await buildReport(a, "day", D)).members;
+    expect(me.excluded_min).toBe(540);
+    expect(me.focus_min).toBe(45);
+    expect(me.adherence_pct).toBe(75);
+
+    // Re-including the block brings it back.
+    await updateBlock(a.id, office!.id, { include_in_reports: true });
+    const [again] = (await buildReport(a, "day", D)).members;
+    expect(again.excluded_min).toBe(0);
+    expect(again.focus_min).toBe(465);
+  });
+
+  it("timer inherits the block's setting, can be flipped, and stamps its entries", async () => {
+    const a = await makeUser(db, "Asha");
+    const now = Date.now();
+    const office = await createBlock(a.id, {
+      title: "Office",
+      starts_at: new Date(now - 3_600_000).toISOString(),
+      ends_at: new Date(now + 3_600_000).toISOString(),
+      include_in_reports: false
+    });
+    const t = await startTimer(a.id, { block_id: office!.id });
+    expect(t.include_in_reports).toBe(false);
+    await db.query("update timers set segment_started_at = now() - interval '5 minutes' where user_id = $1", [a.id]);
+    await pauseTimer(a.id);
+    expect((await setTimerInclude(a.id, true))?.include_in_reports).toBe(true);
+    await resumeTimer(a.id);
+    await db.query("update timers set segment_started_at = now() - interval '5 minutes' where user_id = $1", [a.id]);
+    await stopTimer(a.id);
+    const entries = await listEntries(a.id, new Date(now - 3_600_000).toISOString(), new Date(now + 60_000).toISOString());
+    expect(entries.map((e) => e.include_in_reports)).toEqual([false, true]);
+
+    const flipped = await setEntryInclude(a.id, entries[0].id, true);
+    expect(flipped.include_in_reports).toBe(true);
   });
 });
 

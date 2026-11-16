@@ -134,14 +134,35 @@ export default function TasksPage() {
             ) : null
           )}
         </section>
-        <ProjectsCard projects={catalog.projects} reload={catalog.reloadProjects} />
+        <ProjectsCard
+          projects={catalog.projects}
+          tasks={catalog.tasks}
+          reload={catalog.reloadProjects}
+          onDeleted={(id) => {
+            if (filter === id) setFilter("all");
+            void catalog.reloadTasks();
+          }}
+        />
       </div>
     </main>
   );
 }
 
-function ProjectsCard({ projects, reload }: { projects: Project[]; reload: () => Promise<void> }) {
+function ProjectsCard({
+  projects,
+  tasks,
+  reload,
+  onDeleted
+}: {
+  projects: Project[];
+  tasks: Task[];
+  reload: () => Promise<void>;
+  onDeleted: (id: string) => void;
+}) {
   const toast = useToast();
+  const [deleting, setDeleting] = useState<Project | null>(null);
+  const [alsoTasks, setAlsoTasks] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[projects.length % COLORS.length]);
   const add = async (e: FormEvent) => {
@@ -160,6 +181,21 @@ function ProjectsCard({ projects, reload }: { projects: Project[]; reload: () =>
     await api(`/api/projects/${p.id}`, { method: "PATCH", body: { archived: !p.archived_at } });
     await reload();
   };
+  const remove = async (p: Project) => {
+    setBusy(true);
+    try {
+      const res = await api<{ tasks_deleted: number }>(`/api/projects/${p.id}${alsoTasks ? "?delete_tasks=1" : ""}`, { method: "DELETE" });
+      toast({ text: `Deleted “${p.name}”${res.tasks_deleted ? ` and ${res.tasks_deleted} task${res.tasks_deleted === 1 ? "" : "s"}` : ""}` });
+      setDeleting(null);
+      setAlsoTasks(false);
+      await reload();
+      onDeleted(p.id);
+    } catch (err) {
+      toast({ text: errMsg(err), kind: "bad" });
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <section className="card">
       <div className="card-head">
@@ -173,8 +209,44 @@ function ProjectsCard({ projects, reload }: { projects: Project[]; reload: () =>
           <button className="ghost sm" onClick={() => void archive(p)}>
             {p.archived_at ? "Restore" : "Archive"}
           </button>
+          <button
+            className="ghost sm"
+            onClick={() => {
+              setDeleting(deleting?.id === p.id ? null : p);
+              setAlsoTasks(false);
+            }}
+            aria-label={`Delete ${p.name}`}
+            title="Delete project"
+          >
+            ✕
+          </button>
         </div>
       ))}
+      {deleting ? (
+        <div className="callout bad stack" style={{ marginTop: 10 }}>
+          <span className="small">
+            Delete <strong>{deleting.name}</strong> permanently? Its planned blocks and tracked time stay (your report totals don&apos;t change) but
+            will show as “No project”. This can&apos;t be undone. Tip: <em>Archive</em> hides it but keeps everything.
+          </span>
+          {(() => {
+            const n = tasks.filter((t) => t.project_id === deleting.id && t.status === "todo").length;
+            return (
+              <label className="inline small">
+                <input type="checkbox" checked={alsoTasks} onChange={(e) => setAlsoTasks(e.target.checked)} />
+                Also delete its tasks{n ? ` (${n} open)` : ""}, otherwise they move to “No project”
+              </label>
+            );
+          })()}
+          <div className="row">
+            <button className="danger sm" disabled={busy} onClick={() => void remove(deleting)}>
+              Delete project
+            </button>
+            <button className="ghost sm" onClick={() => setDeleting(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
       <form className="row" onSubmit={add} style={{ marginTop: 12 }}>
         <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Project colour" />
         <input placeholder="New project" value={name} onChange={(e) => setName(e.target.value)} />

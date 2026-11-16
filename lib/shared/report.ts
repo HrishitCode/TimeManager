@@ -2,7 +2,7 @@
 // Everything is interval math over two sets per person: PLANNED (accepted blocks) and DONE (focus entries).
 
 import type { BlockOutcome, DaySeriesPoint, JointSessionOutcome, MemberReport, ProjectSlice, Verdict } from "./types";
-import { clip, dayRange, fmtDuration, hourInTz, intersect, Interval, mergeIntervals, msToMin, toInterval, totalMs, zonedMidnight } from "./time";
+import { clip, dayRange, fmtDuration, hourInTz, intersect, Interval, mergeIntervals, msToMin, subtract, toInterval, totalMs, zonedMidnight } from "./time";
 
 export interface ReportBlock {
   id: string;
@@ -11,6 +11,8 @@ export interface ReportBlock {
   ends_at: string;
   /** Accepted participant ids (owner included). */
   participant_ids: string[];
+  /** false = "don't judge me on this" (e.g. office). The block's whole window is removed from the report. */
+  include?: boolean;
 }
 
 export interface ReportEntry {
@@ -18,6 +20,8 @@ export interface ReportEntry {
   mode: "focus" | "break";
   started_at: string;
   ended_at: string;
+  /** false = ignored by reports. */
+  include?: boolean;
 }
 
 export interface MemberInput {
@@ -53,9 +57,13 @@ export const computeMemberReport = (input: MemberInput, dates: string[], nowMs: 
   const period: Interval = { start: dayRange(dates[0], tz).startMs, end: dayRange(dates[dates.length - 1], tz).endMs };
   const elapsed: Interval = { start: period.start, end: Math.min(period.end, nowMs) };
 
-  const focusEntries = input.entries.filter((e) => e.mode === "focus");
-  const focus = mergeIntervals(clip(focusEntries.map((e) => toInterval(e.started_at, e.ended_at)), period));
-  const allPlanned = mergeIntervals(clip(input.blocks.map((b) => toInterval(b.starts_at, b.ends_at)), period));
+  // Opt-outs: excluded entries vanish; excluded blocks punch their whole window out of both
+  // the plan and the tracked time (focus during office hours shouldn't count either way).
+  const blocks = input.blocks.filter((b) => b.include !== false);
+  const excluded = mergeIntervals(clip(input.blocks.filter((b) => b.include === false).map((b) => toInterval(b.starts_at, b.ends_at)), period));
+  const focusEntries = input.entries.filter((e) => e.mode === "focus" && e.include !== false);
+  const focus = subtract(clip(focusEntries.map((e) => toInterval(e.started_at, e.ended_at)), period), excluded);
+  const allPlanned = subtract(clip(blocks.map((b) => toInterval(b.starts_at, b.ends_at)), period), excluded);
   const planned = clip(allPlanned, elapsed);
   const onPlan = intersect(focus, planned);
 
@@ -64,7 +72,7 @@ export const computeMemberReport = (input: MemberInput, dates: string[], nowMs: 
   const onPlanMin = msToMin(totalMs(onPlan));
 
   // Per-block outcomes for blocks that have started.
-  const outcomes: BlockOutcome[] = input.blocks
+  const outcomes: BlockOutcome[] = blocks
     .filter((b) => new Date(b.starts_at).getTime() < Math.min(nowMs, period.end) && new Date(b.ends_at).getTime() > period.start)
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
     .map((b) => {
@@ -136,7 +144,7 @@ export const computeMemberReport = (input: MemberInput, dates: string[], nowMs: 
         project_id: id,
         name: p?.name ?? "No project",
         color: p?.color ?? "#94a3b8",
-        focus_min: r1(msToMin(totalMs(mergeIntervals(clip(list, period)))))
+        focus_min: r1(msToMin(totalMs(subtract(clip(list, period), excluded))))
       };
     })
     .filter((p) => p.focus_min > 0)
@@ -148,6 +156,7 @@ export const computeMemberReport = (input: MemberInput, dates: string[], nowMs: 
     timezone: tz,
     planned_min: r1(plannedMin),
     upcoming_min: r1(msToMin(totalMs(allPlanned)) - plannedMin),
+    excluded_min: r1(msToMin(totalMs(clip(excluded, elapsed)))),
     focus_min: r1(focusMin),
     on_plan_min: r1(onPlanMin),
     off_plan_min: r1(focusMin - onPlanMin),
@@ -178,6 +187,7 @@ export const computeJointSessions = (
 ): JointSessionOutcome[] => {
   const byUser = new Map(reports.map((r) => [r.user_id, r]));
   return blocks
+    .filter((b) => b.include !== false)
     .filter((b) => b.participant_ids.filter((id) => byUser.has(id)).length > 1)
     .map((b) => {
       const members = b.participant_ids

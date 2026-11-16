@@ -65,6 +65,7 @@ export interface Block {
   task_id: string | null;
   starts_at: string;
   ends_at: string;
+  include_in_reports: boolean;
   participants: Participant[];
 }
 
@@ -77,6 +78,7 @@ export interface Timer {
   label: string | null;
   mode: TimerMode;
   planned_sec: number | null;
+  include_in_reports: boolean;
   status: "running" | "paused";
   session_started_at: string;
   segment_started_at: string | null;
@@ -93,6 +95,7 @@ export interface TimeEntry {
   label: string | null;
   mode: TimerMode;
   source: "timer" | "manual";
+  include_in_reports: boolean;
   started_at: string;
   ended_at: string;
 }
@@ -143,6 +146,8 @@ export interface MemberReport {
   planned_min: number;
   /** Planned time still ahead within the period. */
   upcoming_min: number;
+  /** Elapsed time inside blocks opted out of reports (e.g. office). */
+  excluded_min: number;
   focus_min: number;
   on_plan_min: number;
   off_plan_min: number;

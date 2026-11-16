@@ -68,6 +68,49 @@ describe("computeMemberReport", () => {
   });
 });
 
+describe("opting time out of reports", () => {
+  it("removes an excluded block's whole window, including focus tracked inside it", () => {
+    const r = computeMemberReport(
+      person("a", "Asha", {
+        blocks: [
+          { id: "office", title: "Office", starts_at: ist(D, "09:00"), ends_at: ist(D, "18:00"), participant_ids: ["a"], include: false },
+          { id: "dsa", title: "DSA", starts_at: ist(D, "19:00"), ends_at: ist(D, "20:00"), participant_ids: ["a"] }
+        ],
+        entries: [
+          { project_id: "work", mode: "focus", started_at: ist(D, "09:00"), ended_at: ist(D, "17:00") }, // office work: ignored
+          { project_id: null, mode: "focus", started_at: ist(D, "17:30"), ended_at: ist(D, "18:30") }, // half inside office
+          { project_id: null, mode: "focus", started_at: ist(D, "19:00"), ended_at: ist(D, "20:00") }
+        ]
+      }),
+      [D],
+      endOfDay
+    );
+    expect(r.planned_min).toBe(60);
+    expect(r.excluded_min).toBe(540);
+    expect(r.focus_min).toBe(90); // 18:00–18:30 + 19:00–20:00
+    expect(r.on_plan_min).toBe(60);
+    expect(r.adherence_pct).toBe(100);
+    expect(r.blocks.map((b) => b.title)).toEqual(["DSA"]);
+    expect(r.best_hour).toBe(19);
+    expect(r.projects.find((p) => p.project_id === "work")).toBeUndefined();
+  });
+
+  it("ignores excluded entries", () => {
+    const r = computeMemberReport(
+      person("a", "Asha", {
+        entries: [
+          { project_id: null, mode: "focus", started_at: ist(D, "10:00"), ended_at: ist(D, "11:00"), include: false },
+          { project_id: null, mode: "focus", started_at: ist(D, "12:00"), ended_at: ist(D, "12:30") }
+        ]
+      }),
+      [D],
+      endOfDay
+    );
+    expect(r.focus_min).toBe(30);
+    expect(r.excluded_min).toBe(0);
+  });
+});
+
 describe("comparison", () => {
   it("reports joint session attendance and crowns winners", () => {
     const shared = { id: "j1", title: "Study together", starts_at: ist(D, "20:00"), ends_at: ist(D, "21:00"), participant_ids: ["a", "b"] };

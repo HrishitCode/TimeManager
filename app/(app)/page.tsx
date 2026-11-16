@@ -95,12 +95,14 @@ export default function TodayPage() {
                   <div className="agenda-time">
                     {fmtTime(b.starts_at)}–{fmtTime(b.ends_at)}
                   </div>
-                  <div className="agenda-bar" style={{ background: b.project_color ?? "var(--p1)" }} />
+                  <div className="agenda-bar" style={{ background: b.include_in_reports ? (b.project_color ?? "var(--p1)") : "var(--line-strong)" }} />
                   <div className="grow">
                     <div className="strong ellipsis">{b.title}</div>
                     {others.length ? <div className="tiny muted">with {others.map((p) => p.name).join(", ")}</div> : null}
                   </div>
-                  {invited ? (
+                  {!b.include_in_reports ? (
+                    <span className="chip" title="Left out of reports">not counted</span>
+                  ) : invited ? (
                     <span className="chip accent">invited</span>
                   ) : outcome && state === "past" ? (
                     <span className={`chip ${outcome.attended_pct >= 80 ? "good" : outcome.attended_pct >= 20 ? "warn" : "bad"}`}>
@@ -258,6 +260,7 @@ function ManualLog({ onClose, onSaved, projects }: { onClose: () => void; onSave
   const [label, setLabel] = useState("");
   const [projectId, setProjectId] = useState("");
   const [mode, setMode] = useState<"focus" | "break">("focus");
+  const [include, setInclude] = useState(true);
   const [error, setError] = useState("");
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -268,7 +271,7 @@ function ManualLog({ onClose, onSaved, projects }: { onClose: () => void; onSave
     };
     try {
       await api("/api/entries", {
-        body: { started_at: at(start), ended_at: at(end, end <= start ? 1 : 0), label: label.trim() || null, project_id: projectId || null, mode }
+        body: { started_at: at(start), ended_at: at(end, end <= start ? 1 : 0), label: label.trim() || null, project_id: projectId || null, mode, include_in_reports: include }
       });
       toast({ text: "Logged" });
       onSaved();
@@ -314,6 +317,10 @@ function ManualLog({ onClose, onSaved, projects }: { onClose: () => void; onSave
             </button>
           </div>
         </div>
+        <label className="inline small">
+          <input type="checkbox" checked={include} onChange={(e) => setInclude(e.target.checked)} />
+          Count in reports
+        </label>
         {error ? <div className="callout bad">{error}</div> : null}
         <button className="primary">Save entry</button>
       </form>

@@ -38,6 +38,7 @@ export default function TimerCard({ projects, tasks, currentBlock, onChange }: P
   const [taskId, setTaskId] = useState("");
   const [mode, setMode] = useState<"focus" | "break">("focus");
   const [planned, setPlanned] = useState<number | null>(25 * 60);
+  const [include, setInclude] = useState(true);
   const [busy, setBusy] = useState(false);
   const [stopAt, setStopAt] = useState<string | null>(null);
 
@@ -69,7 +70,8 @@ export default function TimerCard({ projects, tasks, currentBlock, onChange }: P
       project_id: projectId || null,
       task_id: taskId || null,
       mode,
-      planned_sec: planned
+      planned_sec: planned,
+      include_in_reports: include
     });
 
   const startBlock = (b: Block) =>
@@ -134,6 +136,15 @@ export default function TimerCard({ projects, tasks, currentBlock, onChange }: P
               </>
             ) : null}
             {onBlock ? <span className="chip accent">on plan</span> : null}
+            <button
+              className={`chip ${timer.include_in_reports ? "" : "warn"}`}
+              style={{ border: 0, cursor: "pointer" }}
+              title="Tap to change whether this session counts in reports"
+              disabled={busy}
+              onClick={() => void act({ action: "set_include", include_in_reports: !timer.include_in_reports })}
+            >
+              {timer.include_in_reports ? "counts in reports" : "not counted"}
+            </button>
           </p>
         </div>
         <div>
@@ -233,6 +244,10 @@ export default function TimerCard({ projects, tasks, currentBlock, onChange }: P
           ))}
         </select>
       </div>
+      <label className="inline small">
+        <input type="checkbox" checked={include} onChange={(e) => setInclude(e.target.checked)} />
+        Count in reports
+      </label>
       <div className="row between wrap">
         <div className="presets">
           {PRESETS.map((p) => (

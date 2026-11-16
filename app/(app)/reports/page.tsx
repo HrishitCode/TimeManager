@@ -129,6 +129,11 @@ export default function ReportsPage() {
                   <Stat k="on-time starts" v={m.blocks_planned ? pctTxt(m.on_time_pct) : "—"} />
                   <Stat k="tasks done" v={`${m.tasks_done}${m.tasks_due ? `/${m.tasks_due}` : ""}`} />
                 </div>
+                {m.excluded_min > 0 ? (
+                  <p className="tiny muted" style={{ marginTop: 10 }} title="Blocks marked “don't count in reports”, e.g. office hours">
+                    ⊘ {fmtDuration(m.excluded_min)} left out of this report
+                  </p>
+                ) : null}
                 {m.planned_min > 0 ? (
                   <div style={{ marginTop: 14 }}>
                     <div className="row between tiny muted">
@@ -266,7 +271,7 @@ export default function ReportsPage() {
           ) : null}
 
           <p className="tiny muted">
-            Everything here is computed from two things only: the blocks you planned and the time you tracked. It works on trust — log honestly, including breaks and forgotten timers.
+            Everything here is computed from two things only: the blocks you planned and the time you tracked, minus any time you chose to leave out (e.g. office hours). It works on trust: log honestly, including breaks and forgotten timers.
           </p>
         </div>
       )}

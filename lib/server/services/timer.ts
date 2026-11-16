@@ -1,5 +1,5 @@
 import { getDb, Queryable } from "../db";
-import { badRequest } from "../http";
+import { badRequest, notFound } from "../http";
 import type { TimeEntry, Timer, TimerMode } from "@/lib/shared/types";
 
 /**
@@ -28,9 +28,9 @@ const closeSegment = async (q: Queryable, userId: string, t: Timer, endIso: stri
   const sec = Math.floor((endMs - startMs) / 1000);
   if (sec >= 1) {
     await q.query(
-      `insert into time_entries(user_id, project_id, task_id, block_id, label, mode, source, started_at, ended_at)
-       values ($1, $2, $3, $4, $5, $6, 'timer', $7, $8)`,
-      [userId, t.project_id, t.task_id, t.block_id, t.label, t.mode, t.segment_started_at, endIso]
+      `insert into time_entries(user_id, project_id, task_id, block_id, label, mode, source, started_at, ended_at, include_in_reports)
+       values ($1, $2, $3, $4, $5, $6, 'timer', $7, $8, $9)`,
+      [userId, t.project_id, t.task_id, t.block_id, t.label, t.mode, t.segment_started_at, endIso, t.include_in_reports]
     );
   }
   return Math.max(0, sec);
@@ -43,6 +43,8 @@ export interface StartInput {
   label?: string | null;
   mode?: TimerMode;
   planned_sec?: number | null;
+  /** Defaults to the block's setting when starting from a block, else true. */
+  include_in_reports?: boolean;
 }
 
 /** Start a timer. If one is already going, it is stopped and saved first (i.e. "switch"). */
@@ -57,12 +59,15 @@ export const startTimer = async (userId: string, input: StartInput) => {
       const ok = await q.query("select 1 from tasks where id = $1 and user_id = $2", [input.task_id, userId]);
       if (!ok.length) throw badRequest("Unknown task");
     }
+    let include = input.include_in_reports;
     if (input.block_id) {
-      const ok = await q.query("select 1 from block_participants where block_id = $1 and user_id = $2 and status = 'accepted'", [
-        input.block_id,
-        userId
-      ]);
+      const ok = await q.query<{ include_in_reports: boolean }>(
+        `select b.include_in_reports from block_participants bp join plan_blocks b on b.id = bp.block_id
+          where bp.block_id = $1 and bp.user_id = $2 and bp.status = 'accepted'`,
+        [input.block_id, userId]
+      );
       if (!ok.length) throw badRequest("Unknown block");
+      include ??= ok[0].include_in_reports;
     }
     const now = new Date().toISOString();
     const existing = await lock(q, userId);
@@ -72,8 +77,8 @@ export const startTimer = async (userId: string, input: StartInput) => {
     }
     const rows = await q.query<Timer>(
       `insert into timers(user_id, project_id, task_id, block_id, label, mode, planned_sec, status,
-                          session_started_at, segment_started_at, accumulated_sec, version, updated_at)
-       values ($1, $2, $3, $4, $5, $6, $7, 'running', $8, $8, 0, $9, $8) returning *`,
+                          session_started_at, segment_started_at, accumulated_sec, version, updated_at, include_in_reports)
+       values ($1, $2, $3, $4, $5, $6, $7, 'running', $8, $8, 0, $9, $8, $10) returning *`,
       [
         userId,
         input.project_id ?? null,
@@ -83,7 +88,8 @@ export const startTimer = async (userId: string, input: StartInput) => {
         input.mode ?? "focus",
         input.planned_sec ?? null,
         now,
-        (existing?.version ?? 0) + 1
+        (existing?.version ?? 0) + 1,
+        include ?? true
       ]
     );
     return rows[0];
@@ -122,6 +128,19 @@ export const resumeTimer = async (userId: string) => {
 };
 
 /**
+ * Flip whether the running session counts in reports. Applies to the current segment and
+ * anything after it; already-closed segments keep their own setting (edit those as entries).
+ */
+export const setTimerInclude = async (userId: string, include: boolean) => {
+  const db = await getDb();
+  const rows = await db.query<Timer>(
+    "update timers set include_in_reports = $2, version = version + 1, updated_at = now() where user_id = $1 returning *",
+    [userId, include]
+  );
+  return rows[0] ?? null;
+};
+
+/**
  * Stop and save. `atIso` lets you be honest about a forgotten timer:
  * "I actually stopped at 18:40" — it must fall inside the current running segment.
  */
@@ -153,7 +172,7 @@ export const stopTimer = async (userId: string, atIso?: string) => {
 export const listEntries = async (userId: string, fromIso: string, toIso: string) => {
   const db = await getDb();
   return db.query<TimeEntry>(
-    `select id, project_id, task_id, block_id, label, mode, source, started_at, ended_at
+    `select id, project_id, task_id, block_id, label, mode, source, include_in_reports, started_at, ended_at
        from time_entries where user_id = $1 and started_at < $3 and ended_at > $2 order by started_at`,
     [userId, fromIso, toIso]
   );
@@ -161,7 +180,15 @@ export const listEntries = async (userId: string, fromIso: string, toIso: string
 
 export const addManualEntry = async (
   userId: string,
-  e: { started_at: string; ended_at: string; project_id?: string | null; task_id?: string | null; label?: string | null; mode?: TimerMode }
+  e: {
+    started_at: string;
+    ended_at: string;
+    project_id?: string | null;
+    task_id?: string | null;
+    label?: string | null;
+    mode?: TimerMode;
+    include_in_reports?: boolean;
+  }
 ) => {
   const s = new Date(e.started_at).getTime();
   const en = new Date(e.ended_at).getTime();
@@ -174,11 +201,31 @@ export const addManualEntry = async (
     if (!ok.length) throw badRequest("Unknown project");
   }
   const rows = await db.query<TimeEntry>(
-    `insert into time_entries(user_id, project_id, task_id, label, mode, source, started_at, ended_at)
-     values ($1, $2, $3, $4, $5, 'manual', $6, $7)
-     returning id, project_id, task_id, block_id, label, mode, source, started_at, ended_at`,
-    [userId, e.project_id ?? null, e.task_id ?? null, e.label ?? null, e.mode ?? "focus", new Date(s).toISOString(), new Date(en).toISOString()]
+    `insert into time_entries(user_id, project_id, task_id, label, mode, source, started_at, ended_at, include_in_reports)
+     values ($1, $2, $3, $4, $5, 'manual', $6, $7, $8)
+     returning id, project_id, task_id, block_id, label, mode, source, include_in_reports, started_at, ended_at`,
+    [
+      userId,
+      e.project_id ?? null,
+      e.task_id ?? null,
+      e.label ?? null,
+      e.mode ?? "focus",
+      new Date(s).toISOString(),
+      new Date(en).toISOString(),
+      e.include_in_reports ?? true
+    ]
   );
+  return rows[0];
+};
+
+export const setEntryInclude = async (userId: string, id: string, include: boolean) => {
+  const db = await getDb();
+  const rows = await db.query<TimeEntry>(
+    `update time_entries set include_in_reports = $3 where id = $1 and user_id = $2
+     returning id, project_id, task_id, block_id, label, mode, source, include_in_reports, started_at, ended_at`,
+    [id, userId, include]
+  );
+  if (!rows[0]) throw notFound();
   return rows[0];
 };
 
