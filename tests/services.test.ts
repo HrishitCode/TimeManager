@@ -4,7 +4,7 @@ import type { Db } from "@/lib/server/db";
 import { freshDb, ist, makeUser } from "./helpers";
 import { createInvite, createWorkspace, getWorkspaceFor, joinByCode, leaveWorkspace } from "@/lib/server/services/workspace";
 import { createBlock, listBlocks, respondToBlock, updateBlock, copyDay } from "@/lib/server/services/blocks";
-import { getTimer, pauseTimer, resumeTimer, setEntryInclude, setTimerInclude, startTimer, stopTimer, listEntries } from "@/lib/server/services/timer";
+import { addManualEntry, getTimer, pauseTimer, resumeTimer, setEntryInclude, setTimerInclude, startTimer, stopTimer, listEntries } from "@/lib/server/services/timer";
 import { buildReport, memberStatuses } from "@/lib/server/services/reports";
 import { POST as signup } from "@/app/api/auth/signup/route";
 import { POST as login } from "@/app/api/auth/login/route";
@@ -133,7 +133,8 @@ describe("reports", () => {
     const report = await buildReport(b, "day", D);
     expect(report.members.map((m) => m.name)).toEqual(["Ben", "Asha"]); // viewer first
     expect(report.joint_sessions[0].members.map((m) => m.attended_min)).toEqual([60, 40]);
-    expect(report.verdicts.find((v) => v.metric === "Plan adherence")?.winner_id).toBe(a.id);
+    expect(report.verdicts.find((v) => v.metric === "Plan fulfilled")?.winner_id).toBe(a.id);
+    expect(report.headline).toContain("Asha");
 
     const week = await buildReport(a, "week", D);
     expect(week.start_date).toBe("2026-11-09");
@@ -145,6 +146,18 @@ describe("reports", () => {
     await startTimer(b.id, { label: "Leetcode" });
     const statuses = await memberStatuses(a);
     expect(statuses.find((s) => s.user_id === b.id)?.timer?.label).toBe("Leetcode");
+  });
+});
+
+describe("manual logging against a task", () => {
+  it("attaches the task and inherits its project", async () => {
+    const a = await makeUser(db, "Asha");
+    const [p] = await db.query<{ id: string }>("insert into projects(user_id, name) values ($1, 'DSA') returning id", [a.id]);
+    const [t] = await db.query<{ id: string }>("insert into tasks(user_id, project_id, title) values ($1, $2, 'Heaps') returning id", [a.id, p.id]);
+    const e = await addManualEntry(a.id, { started_at: ist(D, "07:00"), ended_at: ist(D, "08:00"), task_id: t.id });
+    expect(e).toMatchObject({ task_id: t.id, project_id: p.id, source: "manual" });
+    const b = await makeUser(db, "Ben");
+    await expect(addManualEntry(b.id, { started_at: ist(D, "07:00"), ended_at: ist(D, "08:00"), task_id: t.id })).rejects.toThrow(/Unknown task/);
   });
 });
 

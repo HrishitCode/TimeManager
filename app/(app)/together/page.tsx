@@ -164,6 +164,16 @@ function ProfileCard() {
   const toast = useToast();
   const [name, setName] = useState(me.user.name);
   const [tz, setTz] = useState(me.user.timezone);
+  const toHHMM = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+  const [dayStart, setDayStart] = useState(toHHMM(me.user.day_start_min));
+  const [dayEnd, setDayEnd] = useState(toHHMM(me.user.day_end_min));
+  const toMin = (hhmm: string) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const startMin = toMin(dayStart);
+  // An end at or before the start means "past midnight" (e.g. 10:00 → 01:00).
+  const endMin = toMin(dayEnd) <= startMin ? toMin(dayEnd) + 1440 : toMin(dayEnd);
   const zones = useMemo(() => {
     try {
       return (Intl as unknown as { supportedValuesOf: (k: string) => string[] }).supportedValuesOf("timeZone");
@@ -172,11 +182,19 @@ function ProfileCard() {
     }
   }, [me.user.timezone]);
   const browserTz = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : null;
+  // "Asia/Calcutta" and "Asia/Kolkata" are the same zone; compare canonical names, not strings.
+  const canonical = (z: string) => {
+    try {
+      return new Intl.DateTimeFormat("en-US", { timeZone: z }).resolvedOptions().timeZone;
+    } catch {
+      return z;
+    }
+  };
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await api("/api/me", { method: "PATCH", body: { name, timezone: tz } });
+      await api("/api/me", { method: "PATCH", body: { name, timezone: tz, day_start_min: startMin, day_end_min: endMin } });
       await reloadMe();
       toast({ text: "Profile saved" });
     } catch (err) {
@@ -209,12 +227,24 @@ function ProfileCard() {
           </select>
           <p className="tiny muted" style={{ marginTop: 4 }}>
             Defines where your day starts and ends in reports.
-            {browserTz && browserTz !== tz ? (
+            {browserTz && canonical(browserTz) !== canonical(tz) ? (
               <>
                 {" "}
                 This device is on <button type="button" className="ghost sm" style={{ padding: "0 4px" }} onClick={() => setTz(browserTz)}>{browserTz}</button>.
               </>
             ) : null}
+          </p>
+        </div>
+        <div>
+          <label>Your day</label>
+          <div className="row">
+            <input type="time" value={dayStart} onChange={(e) => setDayStart(e.target.value)} aria-label="Day starts" required />
+            <span className="muted">to</span>
+            <input type="time" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} aria-label="Day ends" required />
+          </div>
+          <p className="tiny muted" style={{ marginTop: 4 }}>
+            The hours you could plan or work ({Math.round(((endMin - startMin) / 60) * 10) / 10}h{endMin > 1440 ? ", ends after midnight" : ""}).
+            Reports call this your <strong>countable time</strong>, minus anything you leave out (like office hours). Work outside it still counts.
           </p>
         </div>
         <button className="primary">Save</button>

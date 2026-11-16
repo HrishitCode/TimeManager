@@ -11,7 +11,7 @@ export const freshDb = async (): Promise<Db> => {
 
 export const makeUser = async (db: Db, name: string, timezone = "Asia/Kolkata"): Promise<User> => {
   const [u] = await db.query<User>(
-    "insert into users(email, name, password_hash, timezone) values ($1, $2, $3, $4) returning id, email, name, timezone",
+    "insert into users(email, name, password_hash, timezone) values ($1, $2, $3, $4) returning id, email, name, timezone, day_start_min, day_end_min",
     [`${name.toLowerCase()}@example.com`, name, await hashPassword("password123"), timezone]
   );
   return u;

@@ -1,14 +1,16 @@
 import { getDb } from "../db";
 import { getWorkspaceFor } from "./workspace";
-import { computeJointSessions, computeMemberReport, computeVerdicts, MemberInput, ReportBlock, ReportEntry } from "@/lib/shared/report";
+import { computeHeadline, computeJointSessions, computeMemberReport, computeVerdicts, MemberInput, ReportBlock, ReportEntry } from "@/lib/shared/report";
 import { addDays, dateInTz, datesBetween, dayRange, weekStart } from "@/lib/shared/time";
 import type { MemberStatus, Timer, User, WorkspaceReport } from "@/lib/shared/types";
 
-type Person = Pick<User, "id" | "name" | "timezone">;
+type Person = Pick<User, "id" | "name" | "timezone" | "day_start_min" | "day_end_min">;
 
 const peopleFor = async (user: User): Promise<Person[]> => {
   const ws = await getWorkspaceFor(user.id);
-  return ws ? ws.members.map((m) => ({ id: m.id, name: m.name, timezone: m.timezone })) : [user];
+  return ws
+    ? ws.members.map((m) => ({ id: m.id, name: m.name, timezone: m.timezone, day_start_min: m.day_start_min, day_end_min: m.day_end_min }))
+    : [user];
 };
 
 /** Focus entries in a window, plus the live running segment (so "today" is accurate mid-session). */
@@ -70,6 +72,7 @@ export const buildReport = async (viewer: User, period: "day" | "week", date: st
   // Put the viewer first so the UI can label them "You".
   members.sort((a, b) => (a.user_id === viewer.id ? -1 : b.user_id === viewer.id ? 1 : 0));
 
+  const verdicts = computeVerdicts(members);
   return {
     period,
     date,
@@ -77,7 +80,8 @@ export const buildReport = async (viewer: User, period: "day" | "week", date: st
     end_date: dates[dates.length - 1],
     members,
     joint_sessions: computeJointSessions([...allBlocks.values()], members),
-    verdicts: computeVerdicts(members)
+    verdicts,
+    headline: computeHeadline(members, verdicts)
   };
 };
 

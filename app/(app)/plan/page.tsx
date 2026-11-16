@@ -7,7 +7,7 @@ import { Avatar, Modal, useToast } from "@/components/ui";
 import { api, errMsg, useApi, useNow } from "@/lib/client/api";
 import { useCatalog } from "@/lib/client/catalog";
 import { addDays, clip, fmtDuration, fmtTime, intersect, localDate, subtract, toInterval, totalMs } from "@/lib/shared/time";
-import type { Block, MemberStatus, Project, TimeEntry } from "@/lib/shared/types";
+import type { Block, MemberStatus, Project, Task, TimeEntry } from "@/lib/shared/types";
 
 const PX = 1; // pixels per minute → 1440px per day
 const GUTTER = 48;
@@ -278,17 +278,32 @@ export default function PlanPage() {
 
       {draft ? <BlockEditor draft={draft} projects={catalog.projects} tasks={catalog.tasks} onClose={() => setDraft(null)} onSaved={reloadAll} /> : null}
       {open ? <BlockEditor block={open} projects={catalog.projects} tasks={catalog.tasks} onClose={() => setOpen(null)} onSaved={reloadAll} /> : null}
-      {entryOpen ? <EntryEditor entry={entryOpen} projects={catalog.projects} onClose={() => setEntryOpen(null)} onSaved={() => void loadEntries()} /> : null}
+      {entryOpen ? (
+        <EntryEditor entry={entryOpen} projects={catalog.projects} tasks={catalog.tasks} onClose={() => setEntryOpen(null)} onSaved={() => void loadEntries()} />
+      ) : null}
     </main>
   );
 }
 
 /** Tap a tracked stripe in your own column: opt it in/out of reports, or delete it. */
-function EntryEditor({ entry, projects, onClose, onSaved }: { entry: TimeEntry; projects: Project[]; onClose: () => void; onSaved: () => void }) {
+function EntryEditor({
+  entry,
+  projects,
+  tasks,
+  onClose,
+  onSaved
+}: {
+  entry: TimeEntry;
+  projects: Project[];
+  tasks: Task[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const project = projects.find((p) => p.id === entry.project_id);
+  const task = tasks.find((t) => t.id === entry.task_id);
   const minutes = (new Date(entry.ended_at).getTime() - new Date(entry.started_at).getTime()) / 60_000;
 
   const run = async (fn: () => Promise<unknown>, text: string) => {
@@ -308,7 +323,8 @@ function EntryEditor({ entry, projects, onClose, onSaved }: { entry: TimeEntry; 
     <Modal title="Tracked time" onClose={onClose}>
       <div className="stack">
         <div>
-          <h2>{entry.label || project?.name || (entry.mode === "break" ? "Break" : "Focus")}</h2>
+          <h2>{task?.title || entry.label || project?.name || (entry.mode === "break" ? "Break" : "Focus")}</h2>
+          {task && entry.label ? <p className="small">{entry.label}</p> : null}
           <p className="muted small num">
             {fmtTime(entry.started_at)}–{fmtTime(entry.ended_at)} · {fmtDuration(minutes)} · {entry.mode}
             {entry.source === "manual" ? " · logged manually" : ""}

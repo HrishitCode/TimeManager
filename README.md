@@ -71,4 +71,4 @@ components/, lib/client/   UI + a tiny fetch/poll hook
 tests/                vitest; services are tested against a real in-memory Postgres
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design decisions, known limitations, and the rebuild roadmap.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design decisions and known limitations, and [docs/REBUILD.md](docs/REBUILD.md) for the from-scratch rebuild curriculum (system design, databases, AWS: what we chose, why, and when it breaks).

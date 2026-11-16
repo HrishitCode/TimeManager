@@ -126,7 +126,7 @@ export default function TodayPage() {
       {open ? (
         <BlockEditor block={open} projects={catalog.projects} tasks={catalog.tasks} onClose={() => setOpen(null)} onSaved={refreshAll} />
       ) : null}
-      {logOpen ? <ManualLog onClose={() => setLogOpen(false)} onSaved={refreshAll} projects={catalog.activeProjects} /> : null}
+      {logOpen ? <ManualLog onClose={() => setLogOpen(false)} onSaved={refreshAll} projects={catalog.activeProjects} tasks={catalog.tasks} /> : null}
     </main>
   );
 }
@@ -162,7 +162,11 @@ function LiveCard({ statuses, report, people }: { statuses?: MemberStatus[]; rep
               <div className="grow">
                 <div className="row between">
                   <span className="strong">{p.label}</span>
-                  {r ? <span className="chip num" title="Today's score">{r.score}</span> : null}
+                  {r && r.discipline_score !== null ? (
+                    <span className="chip num" title="Discipline today: did they plan, and keep the plan? (0–100)">
+                      {r.discipline_score}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="small muted ellipsis">
                   {t ? (
@@ -252,15 +256,35 @@ function TodayTasks({
   );
 }
 
-function ManualLog({ onClose, onSaved, projects }: { onClose: () => void; onSaved: () => void; projects: ReturnType<typeof useCatalog>["projects"] }) {
+function ManualLog({
+  onClose,
+  onSaved,
+  projects,
+  tasks
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+  projects: ReturnType<typeof useCatalog>["projects"];
+  tasks: Task[];
+}) {
   const toast = useToast();
   const [date, setDate] = useState(localDate());
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [label, setLabel] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [taskId, setTaskId] = useState("");
   const [mode, setMode] = useState<"focus" | "break">("focus");
   const [include, setInclude] = useState(true);
+  // Open tasks first, then recently finished ones (you often log time for something you just completed).
+  const taskOptions = tasks
+    .filter((t) => !projectId || t.project_id === projectId)
+    .sort((a, b) => (a.status === b.status ? a.title.localeCompare(b.title) : a.status === "todo" ? -1 : 1));
+  const pickTask = (id: string) => {
+    setTaskId(id);
+    const t = tasks.find((x) => x.id === id);
+    if (t?.project_id) setProjectId(t.project_id);
+  };
   const [error, setError] = useState("");
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -271,7 +295,7 @@ function ManualLog({ onClose, onSaved, projects }: { onClose: () => void; onSave
     };
     try {
       await api("/api/entries", {
-        body: { started_at: at(start), ended_at: at(end, end <= start ? 1 : 0), label: label.trim() || null, project_id: projectId || null, mode, include_in_reports: include }
+        body: { started_at: at(start), ended_at: at(end, end <= start ? 1 : 0), label: label.trim() || null, project_id: projectId || null, task_id: taskId || null, mode, include_in_reports: include }
       });
       toast({ text: "Logged" });
       onSaved();
@@ -298,17 +322,41 @@ function ManualLog({ onClose, onSaved, projects }: { onClose: () => void; onSave
             <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} required />
           </div>
         </div>
-        <input placeholder="What did you do?" value={label} onChange={(e) => setLabel(e.target.value)} />
         <div className="fields-2">
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">No project</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <div className="seg" style={{ justifySelf: "start" }}>
+          <div>
+            <label htmlFor="log-task">Task</label>
+            <select id="log-task" value={taskId} onChange={(e) => pickTask(e.target.value)}>
+              <option value="">No task</option>
+              {taskOptions.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.status === "done" ? "✓ " : ""}
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="log-project">Project</label>
+            <select
+              id="log-project"
+              value={projectId}
+              onChange={(e) => {
+                setProjectId(e.target.value);
+                if (taskId && tasks.find((t) => t.id === taskId)?.project_id !== e.target.value) setTaskId("");
+              }}
+            >
+              <option value="">No project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <input placeholder={taskId ? "Note (optional)" : "What did you do?"} value={label} onChange={(e) => setLabel(e.target.value)} aria-label="Note" />
+        <div className="row between wrap">
+          <div className="seg">
             <button type="button" className={mode === "focus" ? "on" : ""} onClick={() => setMode("focus")}>
               Focus
             </button>

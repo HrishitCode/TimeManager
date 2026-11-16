@@ -81,7 +81,7 @@ export const getUser = async (req: NextRequest): Promise<User | null> => {
   if (!token) return null;
   const db = await getDb();
   const rows = await db.query<User>(
-    `select u.id, u.email, u.name, u.timezone
+    `select u.id, u.email, u.name, u.timezone, u.day_start_min, u.day_end_min
        from auth_sessions s join users u on u.id = s.user_id
       where s.token_hash = $1 and s.expires_at > now()`,
     [sha256(token)]

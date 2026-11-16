@@ -200,6 +200,12 @@ export const addManualEntry = async (
     const ok = await db.query("select 1 from projects where id = $1 and user_id = $2", [e.project_id, userId]);
     if (!ok.length) throw badRequest("Unknown project");
   }
+  if (e.task_id) {
+    // A task implies its project, so the report attributes the time correctly even if no project was picked.
+    const [task] = await db.query<{ project_id: string | null }>("select project_id from tasks where id = $1 and user_id = $2", [e.task_id, userId]);
+    if (!task) throw badRequest("Unknown task");
+    e = { ...e, project_id: e.project_id ?? task.project_id };
+  }
   const rows = await db.query<TimeEntry>(
     `insert into time_entries(user_id, project_id, task_id, label, mode, source, started_at, ended_at, include_in_reports)
      values ($1, $2, $3, $4, $5, 'manual', $6, $7, $8)

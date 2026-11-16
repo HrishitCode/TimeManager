@@ -16,7 +16,7 @@ export const getWorkspaceFor = async (userId: string, q?: Queryable): Promise<Wo
   );
   if (!ws[0]) return null;
   const members = await db.query<Member>(
-    `select u.id, u.name, u.email, u.timezone, m.role
+    `select u.id, u.name, u.email, u.timezone, u.day_start_min, u.day_end_min, m.role
        from workspace_members m join users u on u.id = m.user_id
       where m.workspace_id = $1 order by m.joined_at`,
     [ws[0].id]

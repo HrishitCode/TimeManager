@@ -5,6 +5,9 @@ export interface User {
   email: string;
   name: string;
   timezone: string;
+  /** Day window in local minutes after midnight (end may exceed 1440 = past midnight). */
+  day_start_min: number;
+  day_end_min: number;
 }
 
 export interface Member {
@@ -12,6 +15,8 @@ export interface Member {
   name: string;
   email: string;
   timezone: string;
+  day_start_min: number;
+  day_end_min: number;
   role: "owner" | "member";
 }
 
@@ -148,6 +153,12 @@ export interface MemberReport {
   upcoming_min: number;
   /** Elapsed time inside blocks opted out of reports (e.g. office). */
   excluded_min: number;
+  /** Time you actually had: day window (+ any planned/worked time outside it) − opted-out time, up to now. */
+  countable_min: number;
+  /** focus ÷ countable. */
+  focus_share_pct: number;
+  /** planned (elapsed) ÷ countable. */
+  planned_share_pct: number;
   focus_min: number;
   on_plan_min: number;
   off_plan_min: number;
@@ -164,8 +175,8 @@ export interface MemberReport {
   avg_start_min: number | null;
   active_days: number;
   best_hour: number | null;
-  /** 0–100 composite; formula in lib/shared/report.ts → scoreOf(). */
-  score: number;
+  /** 0–100 "did you plan, and keep it?"; null if no countable time yet. Formula: lib/shared/report.ts → disciplineOf(). */
+  discipline_score: number | null;
   projects: ProjectSlice[];
   series: DaySeriesPoint[];
   blocks: BlockOutcome[];
@@ -181,6 +192,8 @@ export interface JointSessionOutcome {
 }
 
 export interface Verdict {
+  /** time = how much countable time there was · work = how much was done · discipline = planned & kept. */
+  section: "time" | "work" | "discipline";
   metric: string;
   winner_id: string | null;
   text: string;
@@ -194,4 +207,6 @@ export interface WorkspaceReport {
   members: MemberReport[];
   joint_sessions: JointSessionOutcome[];
   verdicts: Verdict[];
+  /** One-line summary that keeps "how much" and "how well" separate. */
+  headline: string | null;
 }

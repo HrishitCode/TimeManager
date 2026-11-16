@@ -19,7 +19,7 @@ export const POST = route(async (req) => {
   const existing = await db.query("select 1 from users where email = $1", [body.email]);
   if (existing.length) throw conflict("An account with that email already exists");
   const [user] = await db.query<User>(
-    "insert into users(email, name, password_hash, timezone) values ($1, $2, $3, $4) returning id, email, name, timezone",
+    "insert into users(email, name, password_hash, timezone) values ($1, $2, $3, $4) returning id, email, name, timezone, day_start_min, day_end_min",
     [body.email, body.name, await hashPassword(body.password), body.timezone ?? "Asia/Kolkata"]
   );
   const { token, expires } = await createSession(user.id, req.headers.get("user-agent"));
